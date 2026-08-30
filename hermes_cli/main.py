@@ -447,6 +447,7 @@ from hermes_cli.subcommands.gateway import build_gateway_parser
 from hermes_cli.subcommands.profile import build_profile_parser
 from hermes_cli.subcommands.model import build_model_parser
 from hermes_cli.subcommands.setup import build_setup_parser
+from hermes_cli.referee import build_referee_parser, cmd_referee
 
 from hermes_cli.subcommands.whatsapp import build_whatsapp_parser
 from hermes_cli.subcommands.slack import build_slack_parser
@@ -13454,6 +13455,7 @@ def main():
     build_gateway_parser(
         subparsers, cmd_gateway=cmd_gateway, cmd_proxy=cmd_proxy, cmd_gateway_enroll=cmd_gateway_enroll
     )
+    build_referee_parser(subparsers, cmd_referee=cmd_referee)
 
     # =========================================================================
     # lsp command

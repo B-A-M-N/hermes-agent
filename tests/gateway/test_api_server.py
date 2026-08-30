@@ -227,6 +227,45 @@ class TestAdapterInit:
         assert captured["checkpoint_max_file_size_mb"] == 4
 
 
+    def test_referee_mode_clears_live_agent_tool_surface(self, monkeypatch):
+        captured = {}
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                self.tools = [{"function": {"name": "write_file"}}]
+                self.valid_tool_names = {"write_file"}
+
+        monkeypatch.setattr("run_agent.AIAgent", FakeAgent)
+        monkeypatch.setattr(
+            "gateway.run._resolve_runtime_agent_kwargs",
+            lambda: {"provider": "openai", "base_url": "https://example.test/v1"},
+        )
+        monkeypatch.setattr("gateway.run._resolve_gateway_model", lambda: "referee-model")
+        monkeypatch.setattr(
+            "gateway.run._load_gateway_config",
+            lambda: {"referee": {"enabled": True, "policy_version": 1}},
+        )
+        monkeypatch.setattr(
+            "gateway.run.GatewayRunner._load_reasoning_config",
+            staticmethod(lambda model="": {}),
+        )
+        monkeypatch.setattr("gateway.run.GatewayRunner._load_fallback_model", staticmethod(lambda: None))
+        monkeypatch.setattr("hermes_cli.tools_config._get_platform_tools", lambda *_: {"coding"})
+
+        adapter = APIServerAdapter(PlatformConfig(enabled=True))
+        monkeypatch.setattr(adapter, "_ensure_session_db", lambda: None)
+
+        agent = adapter._create_agent(session_id="referee-session")
+
+        assert captured["enabled_toolsets"] == []
+        assert captured["skip_memory"] is True
+        assert captured["skip_background_review"] is True
+        assert agent._referee_mode is True
+        assert agent.tools == []
+        assert agent.valid_tool_names == set()
+
+
 # ---------------------------------------------------------------------------
 # Auth checking
 # ---------------------------------------------------------------------------
@@ -866,6 +905,11 @@ class TestCapabilitiesEndpoint:
             assert data["runtime"]["mode"] == "server_agent"
             assert data["runtime"]["tool_execution"] == "server"
             assert data["runtime"]["split_runtime"] is False
+            assert data["referee"] == {
+                "enabled": False,
+                "policy_version": 1,
+                "effective_tools": None,
+            }
             assert "API-server host" in data["runtime"]["description"]
             assert data["features"]["chat_completions"] is True
             assert data["features"]["run_status"] is True
@@ -876,6 +920,26 @@ class TestCapabilitiesEndpoint:
             assert data["endpoints"]["model_options"] == {"method": "GET", "path": "/api/model/options"}
             assert data["endpoints"]["skills"] == {"method": "GET", "path": "/v1/skills"}
             assert data["endpoints"]["toolsets"] == {"method": "GET", "path": "/v1/toolsets"}
+
+    @pytest.mark.asyncio
+    async def test_capabilities_advertises_referee_contract(self, adapter, monkeypatch):
+        monkeypatch.setattr(
+            "gateway.run._load_gateway_config",
+            lambda: {"referee": {"enabled": True, "policy_version": 1}},
+        )
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/v1/capabilities")
+            assert resp.status == 200
+            data = await resp.json()
+
+        assert data["runtime"]["mode"] == "referee"
+        assert data["runtime"]["tool_execution"] == "disabled"
+        assert data["referee"] == {
+            "enabled": True,
+            "policy_version": 1,
+            "effective_tools": [],
+        }
 
 
 # ---------------------------------------------------------------------------

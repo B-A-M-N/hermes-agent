@@ -3346,8 +3346,8 @@ def run_doctor(args):
                         continue
                     try:
                         content = wrapper.read_text(encoding="utf-8")
-                        if "hermes -p" in content:
-                            _m = _re.search(r"hermes -p (\S+)", content)
+                        if "hermes -p" in content or "hermes_cli.main -p" in content:
+                            _m = _re.search(r"(?:hermes -p|hermes_cli\.main -p) (\S+)", content)
                             if _m and not profile_exists(_m.group(1)):
                                 check_warn(f"Orphan alias: {wrapper.name} → profile '{_m.group(1)}' no longer exists")
                     except Exception:

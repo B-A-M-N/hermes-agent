@@ -117,6 +117,37 @@ hermes update       # Update to the latest version
 hermes doctor       # Diagnose any issues
 ```
 
+### Read-only referee API profile
+
+The API server supports an explicit referee profile for external review
+orchestrators. In that profile, model-visible tools and tool execution are
+disabled at the runtime boundary, including later MCP refreshes. Configure the
+profile’s `config.yaml` with:
+
+```yaml
+referee:
+  enabled: true
+  policy_version: 1
+```
+
+The authenticated `/v1/capabilities` response is the operational contract. A
+valid referee profile reports `runtime.mode: referee`,
+`runtime.tool_execution: disabled`, `referee.effective_tools: []`, and
+`build.referee_contract: 1`. Clients should verify that contract before sending
+review requests; health or model availability alone is not sufficient.
+
+For a local managed service, provision the profile without putting the bearer
+key in a command argument or config file:
+
+```bash
+hermes referee provision --profile athena-referee --host 127.0.0.1 --port 8643 --key-stdin
+```
+
+The command disables inherited messaging, MCP, multiplexing, and all auxiliary
+helpers for that profile, then installs and starts the user service. Repeating
+it is safe; callers should verify `/v1/capabilities` before trusting the
+endpoint.
+
 📖 **[Full documentation →](https://hermes-agent.nousresearch.com/docs/)**
 
 ---

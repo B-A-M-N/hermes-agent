@@ -68,6 +68,7 @@ from agent.turn_context import (
 )
 from hermes_cli.config import _is_ssh_remote_tilde_cwd, cfg_get
 from hermes_cli.fallback_config import get_fallback_chain
+from hermes_cli.runtime_provenance import verify_runtime_provenance
 
 # --- Agent cache tuning ---------------------------------------------------
 # Bounds the per-session AIAgent cache to prevent unbounded growth in
@@ -7064,6 +7065,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
     def __init__(self, config: Optional[GatewayConfig] = None):
         global _gateway_runner_ref
+        # A wrapper, service unit, or editable install can otherwise combine
+        # hermes_cli from one checkout with gateway code from another.  That
+        # is unsafe for every gateway and especially unsafe for the read-only
+        # referee profile, whose capability contract must describe this exact
+        # installation.
+        self._runtime_root = verify_runtime_provenance()
         # When multiplex_profiles is on, load under the default profile secret
         # scope so bot tokens in that profile's .env resolve the same way
         # secondary profiles do (#64674). Explicit config= injection (tests)

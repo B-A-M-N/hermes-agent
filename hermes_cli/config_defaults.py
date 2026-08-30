@@ -372,6 +372,14 @@ DEFAULT_CONFIG = {
         "reasoning_echo": False,
     },
 
+    # Read-only referee profile contract. The API server treats this as an
+    # authoritative mode switch: enabled profiles expose no model-visible
+    # tools and advertise the contract through /v1/capabilities.
+    "referee": {
+        "enabled": False,
+        "policy_version": 1,
+    },
+
     "terminal": {
         "backend": "local",
         "modal_mode": "auto",

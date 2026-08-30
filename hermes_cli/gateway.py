@@ -3927,6 +3927,7 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
         path_entries.extend(_build_wsl_interop_paths(path_entries))
         path_entries.extend(common_bin_paths)
         sane_path = ":".join(path_entries)
+        runtime_root = _remap_path_for_user(str(PROJECT_ROOT), home_dir)
         return f"""[Unit]
 Description={SERVICE_DESCRIPTION}
 After=network-online.target
@@ -3945,6 +3946,8 @@ Environment="LOGNAME={username}"
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
+Environment="PYTHONPATH={runtime_root}"
+Environment="HERMES_EXPECTED_RUNTIME_ROOT={runtime_root}"
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -3970,6 +3973,7 @@ WantedBy=multi-user.target
     path_entries.extend(_build_wsl_interop_paths(path_entries))
     path_entries.extend(common_bin_paths)
     sane_path = ":".join(path_entries)
+    runtime_root = str(PROJECT_ROOT)
     return f"""[Unit]
 Description={SERVICE_DESCRIPTION}
 After=network-online.target
@@ -3983,6 +3987,8 @@ WorkingDirectory={working_dir}
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
+Environment="PYTHONPATH={runtime_root}"
+Environment="HERMES_EXPECTED_RUNTIME_ROOT={runtime_root}"
 Restart=always
 RestartSec=5
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
@@ -5269,6 +5275,10 @@ def generate_launchd_plist() -> str:
         <string>{venv_dir}</string>
         <key>HERMES_HOME</key>
         <string>{hermes_home}</string>
+        <key>PYTHONPATH</key>
+        <string>{PROJECT_ROOT}</string>
+        <key>HERMES_EXPECTED_RUNTIME_ROOT</key>
+        <string>{PROJECT_ROOT}</string>
     </dict>
 
     <key>LimitLoadToSessionType</key>

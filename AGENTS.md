@@ -85,6 +85,14 @@ conservative at the waist.
   resolution chains, config propagation, security boundaries, remote
   backends, or file/network I/O, exercise the real path with real imports
   against a temp `HERMES_HOME`. Mocks hide integration bugs.
+- **Referee API profiles are hard no-tools boundaries.** When
+  `referee.enabled: true` is set in the active profile's `config.yaml`, the
+  API server must advertise `runtime.mode: referee`,
+  `runtime.tool_execution: disabled`, and `referee.effective_tools: []` from
+  authenticated `/v1/capabilities`. The live agent must receive no
+  model-visible tools, skip memory/background side effects, and remain
+  tool-free after late MCP refreshes. Keep this contract explicit and verify
+  it through the real API path.
 - **Cache-, alternation-, and invariant-safe.** Preserve prompt caching, strict
   message role alternation (never two same-role messages in a row; never a
   synthetic user message injected mid-loop), and a system prompt that is

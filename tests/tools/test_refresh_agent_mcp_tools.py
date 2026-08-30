@@ -44,6 +44,28 @@ def test_refresh_adds_late_landing_tools(monkeypatch):
     assert len(agent.tools) == 3
 
 
+def test_referee_refresh_can_never_reintroduce_tools(monkeypatch):
+    """The referee boundary survives late MCP reloads and context injection."""
+    agent = _agent(["read_file", "lcm_grep"])
+    agent._referee_mode = True
+    agent._context_engine_tool_names = {"lcm_grep"}
+
+    import model_tools
+
+    monkeypatch.setattr(
+        model_tools,
+        "get_tool_definitions",
+        lambda **kw: [_tool("terminal"), _tool("mcp_late_tool")],
+    )
+
+    added = mcp_tool.refresh_agent_mcp_tools(agent)
+
+    assert added == set()
+    assert agent.tools == []
+    assert agent.valid_tool_names == set()
+    assert agent._context_engine_tool_names == set()
+
+
 def test_refresh_preserves_memory_provider_and_context_engine_tools(monkeypatch):
     """B1 regression: a rebuild must NOT drop post-build-injected tools.
 

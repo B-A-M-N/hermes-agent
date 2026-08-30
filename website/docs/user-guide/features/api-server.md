@@ -245,6 +245,7 @@ Returns a machine-readable description of the API server's stable surface for ex
   "object": "hermes.api_server.capabilities",
   "platform": "hermes-agent",
   "model": "hermes-agent",
+  "build": {"api_contract": 1, "referee_contract": 1},
   "auth": {"type": "bearer", "required": true},
   "features": {
     "chat_completions": true,
@@ -258,6 +259,31 @@ Returns a machine-readable description of the API server's stable surface for ex
 ```
 
 Use this endpoint when integrating dashboards, browser UIs, or control planes so they can discover whether the running Hermes version supports runs, streaming, cancellation, and session continuity without depending on private Python internals.
+
+### Read-only referee profile
+
+For an external orchestrator that must review evidence without receiving Hermes
+tools, enable the profile contract:
+
+```yaml
+referee:
+  enabled: true
+  policy_version: 1
+```
+
+The authenticated capabilities response must report
+`runtime.mode: referee`, `runtime.tool_execution: disabled`,
+`referee.effective_tools: []`, and `build.referee_contract: 1`. The dedicated
+provisioning command also disables messaging, MCP, multiplexing, and all
+auxiliary helpers and installs a user service on loopback:
+
+```bash
+hermes referee provision --profile athena-referee --host 127.0.0.1 --port 8643 --key-stdin
+```
+
+Pass the key through stdin so it never appears in process arguments or shell
+history. Verify the capabilities contract after service start; `/models` or a
+successful health check alone does not prove the profile is read-only.
 
 ## Browser-extension control
 

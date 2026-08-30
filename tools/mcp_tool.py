@@ -8182,6 +8182,19 @@ def refresh_agent_mcp_tools(
     from model_tools import get_tool_definitions
     from tools.registry import registry
 
+    # Referee agents are an explicit no-tools capability boundary, not merely
+    # an empty initial toolset.  MCP reloads and late-binding refreshes happen
+    # after construction, so allowing this shared helper to rebuild the
+    # registry would reintroduce model-visible tools into a referee session.
+    if getattr(agent, "_referee_mode", False):
+        with _agent_tools_lock:
+            agent.tools = []
+            agent.valid_tool_names = set()
+            engine_names = getattr(agent, "_context_engine_tool_names", None)
+            if isinstance(engine_names, set):
+                engine_names.clear()
+        return set()
+
     # Explicit reloads (/reload-mcp) pass freshly-resolved toolsets so a server
     # the user just ENABLED in config is picked up; the agent's stored selection
     # is then updated to match. The automatic paths (between-turns, late-binding)

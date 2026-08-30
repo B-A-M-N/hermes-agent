@@ -485,7 +485,7 @@ def check_alias_collision(name: str) -> Optional[str]:
             if existing_path == str(expected):
                 try:
                     content = expected.read_text(encoding="utf-8")
-                    if "hermes -p" in content:
+                    if "hermes -p" in content or "hermes_cli.main -p" in content:
                         return None  # it's our wrapper, safe to overwrite
                 except Exception:
                     pass
@@ -528,7 +528,15 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
     if is_windows:
         wrapper_path = wrapper_dir / f"{canon}.bat"
         try:
-            wrapper_path.write_text(f"@echo off\r\nhermes -p {profile} %*\r\n", encoding="utf-8")
+            runtime_root = Path(__file__).resolve().parents[1]
+            python_exe = Path(sys.executable).resolve()
+            wrapper_path.write_text(
+                f'@echo off\r\n'
+                f'set "PYTHONPATH={runtime_root};%PYTHONPATH%"\r\n'
+                f'set "HERMES_EXPECTED_RUNTIME_ROOT={runtime_root}"\r\n'
+                f'"{python_exe}" -m hermes_cli.main -p {profile} %*\r\n',
+                encoding="utf-8",
+            )
             return wrapper_path
         except OSError as e:
             print(f"⚠ Could not create wrapper at {wrapper_path}: {e}")
@@ -536,8 +544,17 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
     else:
         wrapper_path = wrapper_dir / canon
         try:
-            hermes_exe = shutil.which("hermes") or "hermes"
-            wrapper_path.write_text(f'#!/bin/sh\nexec {shlex.quote(hermes_exe)} -p {profile} "$@"\n', encoding="utf-8")
+            runtime_root = str(Path(__file__).resolve().parents[1])
+            python_exe = shlex.quote(str(Path(sys.executable).resolve()))
+            root = shlex.quote(runtime_root)
+            selected_profile = shlex.quote(profile)
+            wrapper_path.write_text(
+                "#!/bin/sh\n"
+                f'exec env PYTHONPATH={root}:"$PYTHONPATH" '
+                f'HERMES_EXPECTED_RUNTIME_ROOT={root} '
+                f'{python_exe} -m hermes_cli.main -p {selected_profile} "$@"\n',
+                encoding="utf-8",
+            )
             wrapper_path.chmod(wrapper_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
             return wrapper_path
         except OSError as e:
@@ -567,7 +584,7 @@ def remove_wrapper_script(name: str) -> bool:
             try:
                 # Verify it's our wrapper before removing
                 content = wrapper_path.read_text(encoding="utf-8")
-                if "hermes -p" in content:
+                if "hermes -p" in content or "hermes_cli.main -p" in content:
                     wrapper_path.unlink()
                     return True
             except Exception:
@@ -610,7 +627,8 @@ def find_alias_for_profile(profile_name: str) -> Optional[str]:
     """Return the alias name of the wrapper that activates *profile_name*, or None.
 
     A wrapper created by :func:`create_wrapper_script` is a file named after the
-    alias whose body invokes ``hermes -p <profile>``. When the alias name equals
+    alias whose body invokes a pinned ``hermes_cli.main -p <profile>`` runtime.
+    Older wrappers used ``hermes -p <profile>``. When the alias name equals
     the profile name this is trivial, but a custom alias (``hermes profile alias
     <profile> --name <custom>``) produces a differently-named file — so the
     display side cannot assume ``wrapper == profile`` and must reverse-look-up.
@@ -628,7 +646,7 @@ def find_alias_for_profile(profile_name: str) -> Optional[str]:
 
 
 # Cap how much of a wrapper file we read when reverse-looking-up its profile.
-# Real wrappers are a few hundred bytes of shell; the needle (``hermes -p X``)
+# Real wrappers are a few hundred bytes of shell; the needle (``-p X``)
 # sits near the top. The wrapper dir (e.g. ``~/.local/bin``) commonly also holds
 # large unrelated binaries (ffmpeg, node, …) — reading those whole, N times, was
 # the dominant cost in ``list_profiles`` (~4.5s). Reading a small head slice and
@@ -650,7 +668,7 @@ def build_alias_map() -> dict[str, str]:
     if not wrapper_dir.is_dir():
         return result
     is_windows = sys.platform == "win32"
-    prefix = "hermes -p "
+    prefixes = ("hermes_cli.main -p ", "hermes -p ")
 
     for entry in sorted(wrapper_dir.iterdir()):
         if not entry.is_file():
@@ -666,10 +684,17 @@ def build_alias_map() -> dict[str, str]:
         except (OSError, UnicodeDecodeError):
             # UnicodeDecodeError = a binary on PATH (ffmpeg etc.) — not a wrapper.
             continue
-        idx = content.find(prefix)
-        if idx == -1:
+        match = None
+        prefix = ""
+        for candidate in prefixes:
+            idx = content.find(candidate)
+            if idx != -1:
+                match = idx
+                prefix = candidate
+                break
+        if match is None:
             continue
-        rest = content[idx + len(prefix):]
+        rest = content[match + len(prefix):]
         # Profile id is the first whitespace-delimited token after the flag.
         canon = rest.split(None, 1)[0].strip() if rest.strip() else ""
         if not canon:
