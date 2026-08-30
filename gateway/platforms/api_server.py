@@ -3091,7 +3091,15 @@ class APIServerAdapter(BasePlatformAdapter):
                 self._last_resolved_model["*"] = model
 
         user_config = _load_gateway_config()
-        enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+        referee_config = user_config.get("referee") or {}
+        referee_enabled = bool(
+            isinstance(referee_config, dict) and referee_config.get("enabled") is True
+        )
+        enabled_toolsets = (
+            []
+            if referee_enabled
+            else sorted(_get_platform_tools(user_config, "api_server"))
+        )
 
         max_iterations = _current_max_iterations()
 
@@ -3126,6 +3134,8 @@ class APIServerAdapter(BasePlatformAdapter):
             "verbose_logging": False,
             "ephemeral_system_prompt": ephemeral_system_prompt or None,
             "enabled_toolsets": enabled_toolsets,
+            "skip_memory": referee_enabled,
+            "skip_background_review": referee_enabled,
             "session_id": session_id,
             "platform": "api_server",
             "stream_delta_callback": stream_delta_callback,
@@ -3141,6 +3151,13 @@ class APIServerAdapter(BasePlatformAdapter):
             agent_kwargs["service_tier"] = request_service_tier
 
         agent = AIAgent(**agent_kwargs)
+        # Keep the mode explicit on the live agent as well as on the
+        # capability surface. This is a defense-in-depth marker for future
+        # tool injection paths and makes the operational invariant inspectable.
+        agent._referee_mode = referee_enabled
+        if referee_enabled:
+            agent.tools = []
+            agent.valid_tool_names = set()
         agent._hermes_api_runtime = {
             "provider": runtime_kwargs.get("provider") or getattr(agent, "provider", "") or "",
             "model": getattr(agent, "model", None) or model,
@@ -3321,15 +3338,29 @@ class APIServerAdapter(BasePlatformAdapter):
         if auth_err:
             return auth_err
 
-        return web.json_response({
-            "object": "hermes.api_server.capabilities",
-            "platform": "hermes-agent",
-            "model": self._model_name,
-            "auth": {
-                "type": "bearer",
-                "required": bool(self._api_key),
-            },
-            "runtime": {
+        from gateway.run import _load_gateway_config
+
+        referee_config = _load_gateway_config().get("referee") or {}
+        referee_enabled = bool(
+            isinstance(referee_config, dict) and referee_config.get("enabled") is True
+        )
+        referee_policy_version = (
+            referee_config.get("policy_version", 1)
+            if isinstance(referee_config, dict)
+            else None
+        )
+        runtime = (
+            {
+                "mode": "referee",
+                "tool_execution": "disabled",
+                "split_runtime": False,
+                "description": (
+                    "This profile is a read-only referee; model-visible tools "
+                    "and tool execution are disabled."
+                ),
+            }
+            if referee_enabled
+            else {
                 "mode": "server_agent",
                 "tool_execution": "server",
                 "split_runtime": False,
@@ -3338,6 +3369,22 @@ class APIServerAdapter(BasePlatformAdapter):
                     "tools execute on the API-server host unless a future "
                     "explicit split-runtime mode is enabled."
                 ),
+            }
+        )
+
+        return web.json_response({
+            "object": "hermes.api_server.capabilities",
+            "platform": "hermes-agent",
+            "model": self._model_name,
+            "auth": {
+                "type": "bearer",
+                "required": bool(self._api_key),
+            },
+            "runtime": runtime,
+            "referee": {
+                "enabled": referee_enabled,
+                "policy_version": referee_policy_version,
+                "effective_tools": [] if referee_enabled else None,
             },
             "features": {
                 "chat_completions": True,

@@ -117,6 +117,25 @@ hermes update       # Update to the latest version
 hermes doctor       # Diagnose any issues
 ```
 
+### Read-only referee API profile
+
+The API server supports an explicit referee profile for external review
+orchestrators. In that profile, model-visible tools and tool execution are
+disabled at the runtime boundary, including later MCP refreshes. Configure the
+profile’s `config.yaml` with:
+
+```yaml
+referee:
+  enabled: true
+  policy_version: 1
+```
+
+The authenticated `/v1/capabilities` response is the operational contract. A
+valid referee profile reports `runtime.mode: referee`,
+`runtime.tool_execution: disabled`, and `referee.effective_tools: []`. Clients
+should verify that contract before sending review requests; health or model
+availability alone is not sufficient.
+
 📖 **[Full documentation →](https://hermes-agent.nousresearch.com/docs/)**
 
 ---
