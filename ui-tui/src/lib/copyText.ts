@@ -1,9 +1,7 @@
 import { setClipboard } from '@hermes/ink'
 
 export type CopyTextOutcome =
-  | { method: 'native'; success: true }
-  | { method: 'osc52'; success: true }
-  | { method: 'none'; success: false }
+  { method: 'native'; success: true } | { method: 'osc52'; success: true } | { method: 'none'; success: false }
 
 /**
  * Shared application-level clipboard wrapper.
