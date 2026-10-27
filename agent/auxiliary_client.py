@@ -896,6 +896,22 @@ def _apply_user_default_headers(headers: dict | None) -> dict | None:
     return merged or headers
 
 
+def _apply_custom_provider_route_headers(headers: dict | None, base_url: str) -> dict | None:
+    """Merge headers configured for the matching custom-provider URL, if any.
+
+    Provider-specific headers follow the resolved endpoint instead of being applied globally
+    across unrelated providers. SECURITY: values may carry credentials; never log them.
+    """
+    try:
+        from hermes_cli.config import apply_custom_provider_extra_headers_to_client_kwargs
+        client_kwargs = {"default_headers": dict(headers or {})}
+        apply_custom_provider_extra_headers_to_client_kwargs(client_kwargs, base_url)
+        return client_kwargs.get("default_headers") or None
+    except Exception:
+        logger.debug("custom-provider auxiliary headers skipped", exc_info=True)
+        return headers
+
+
 def build_or_headers(or_config: dict | None = None) -> dict:
     """OpenRouter headers, plus response-cache headers when enabled.
 
@@ -2246,7 +2262,8 @@ def _endpoint_default_headers(
         headers = dict(hermes_xai_default_headers())
     else:
         headers = _profile_default_headers(provider) or {}
-    return _apply_user_default_headers(headers or None) or None
+    merged = _apply_user_default_headers(headers or None)
+    return _apply_custom_provider_route_headers(merged, base_url) or None
 
 
 def _profile_default_headers(provider: str) -> Optional[dict]:
@@ -2909,6 +2926,7 @@ def _try_custom_endpoint() -> tuple[Optional[Any], Optional[str]]:
     _extra = {"default_query": _dq} if _dq else {}
     # User model.default_headers override SDK fingerprint headers (as on the main client) for strict gateways/WAFs.
     _custom_headers = _apply_user_default_headers(None)
+    _custom_headers = _apply_custom_provider_route_headers(_custom_headers, _clean_base)
     if _custom_headers:
         _extra["default_headers"] = _custom_headers
     if custom_mode == "codex_responses":

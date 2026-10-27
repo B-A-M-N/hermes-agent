@@ -110,3 +110,43 @@ class TestAuxClientHonorsUserDefaultHeaders:
         assert client is not None
         headers = mock_openai.call_args.kwargs.get("default_headers", {}) or {}
         assert headers.get("User-Agent") == "curl/8.7.1"
+
+
+@pytest.mark.parametrize(
+    ("base_url", "expected_identity"),
+    [
+        ("https://gateway.example/v1", "client-a"),
+        ("https://gateway.example/staging/v1", "client-a-staging"),
+        ("https://other-provider.example/v1", None),
+    ],
+)
+def test_aux_custom_route_headers_follow_resolved_url(tmp_path, base_url, expected_identity):
+    """Configured route identity reaches only the matching auxiliary endpoint."""
+    _write_config(tmp_path, {
+        "model": {
+            "default": "test-model",
+            "provider": "custom",
+            "base_url": base_url,
+            "api_key": "test-key",
+        },
+        "custom_providers": [
+            {
+                "name": "gateway-production",
+                "base_url": "https://gateway.example/v1",
+                "extra_headers": {"X-Client-Identity": "client-a"},
+            },
+            {
+                "name": "gateway-staging",
+                "base_url": "https://gateway.example/staging/v1",
+                "extra_headers": {"X-Client-Identity": "client-a-staging"},
+            },
+        ],
+    })
+    with patch("agent.auxiliary_client.OpenAI") as mock_openai:
+        mock_openai.return_value = MagicMock()
+        from agent.auxiliary_client import resolve_provider_client
+        client, _model = resolve_provider_client("custom", "test-model")
+
+    assert client is not None
+    headers = mock_openai.call_args.kwargs.get("default_headers", {}) or {}
+    assert headers.get("X-Client-Identity") == expected_identity
